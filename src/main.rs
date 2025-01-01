@@ -5,8 +5,7 @@ fn main() {
     store.init();
     store.set("hello".to_string(), "world".to_string());
     store.set("name".to_string(), "jojo".to_string());
+    store.set("lol".to_string(), "laugh".to_string());
 
-    println!("name: {:?} ", store.get("name"));
-
-    println!("store: {:?} ", store);
+    println!("name: {} ", if let Some(value) = store.get("name") { value } else { "not found".to_string() });
 }

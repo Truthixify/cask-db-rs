@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 pub struct KeyEntry {
     timestamp: usize,
     pub position: usize,
-    total_size: usize,
+    pub total_size: usize,
 }
 
 impl KeyEntry {
@@ -19,9 +19,9 @@ impl KeyEntry {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct KeyValue {
-    timestamp: usize,
-    key: String,
-    value: String,
+    pub timestamp: usize,
+    pub key: String,
+    pub value: String,
 }
 
 impl KeyValue {

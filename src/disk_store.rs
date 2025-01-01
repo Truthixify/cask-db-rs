@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs::{File, OpenOptions}, io::{Read, Seek, SeekFrom, Write}, path::Path};
+use std::{collections::HashMap, fs::{File, OpenOptions}, io::{Read, Seek, SeekFrom, Write}, path::Path, time::{SystemTime, UNIX_EPOCH}};
 use crate::format::{KeyEntry, KeyValue};
 
 
@@ -45,7 +45,7 @@ impl DiskStorage {
     }
 
     pub fn set(&mut self, key: String, value: String) {
-        let timestamp = 0;
+        let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as usize;
         let kv = KeyValue::new(timestamp, key.clone(), value);
         let bytes = kv.to_bytes().unwrap();
         let header = kv.encode_header();
@@ -67,11 +67,14 @@ impl DiskStorage {
 
                 let mut header_buf = [0u8; Self::HEADER_SIZE];
                 file.read(&mut header_buf).unwrap();
-                let (_, _, value_size) = KeyValue::decode_header(&header_buf);
 
-                let mut value_buf = vec![0u8; value_size];
-                file.read(&mut value_buf).unwrap();
-                let value = String::from_utf8(value_buf).unwrap();
+                let mut data_buf = vec![0u8; key_entry.total_size];
+
+                file.read(&mut data_buf).unwrap();
+
+                let kv = KeyValue::from_bytes(&data_buf).unwrap();
+
+                let value = kv.value;
 
                 Some(value)
             }
@@ -107,10 +110,6 @@ impl DiskStorage {
             self.write_position += total_size;  
             println!("loaded key: {}, value: {}", key, value);
         }
-    }
-
-    pub fn close(&mut self) {
-        self.file.flush().unwrap();
     }
 }
 
