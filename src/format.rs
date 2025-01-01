@@ -22,14 +22,28 @@ pub struct KeyValue {
     pub timestamp: usize,
     pub key: String,
     pub value: String,
+    pub crc: u32,
 }
 
 impl KeyValue {
     pub fn new(timestamp: usize, key: String, value: String) -> Self {
+        let mut bytes = vec![];
+
+        let timestamp_bytes = timestamp.to_be_bytes();
+        let key_bytes = key.as_bytes();
+        let value_bytes = value.as_bytes();
+
+        bytes.extend(&timestamp_bytes);
+        bytes.extend(key_bytes);
+        bytes.extend(value_bytes);
+        
+        let crc = crc::Crc::<u32>::new(&crc::CRC_32_ISO_HDLC).checksum(&bytes);
+
         KeyValue {
             timestamp,
             key,
             value,
+            crc,
         }
     }
 

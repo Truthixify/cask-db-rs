@@ -44,9 +44,9 @@ impl DiskStorage {
         }
     }
 
-    pub fn set(&mut self, key: String, value: String) {
+    pub fn set(&mut self, key: &str, value: &str) {
         let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as usize;
-        let kv = KeyValue::new(timestamp, key.clone(), value);
+        let kv = KeyValue::new(timestamp, key.to_string(), value.to_string());
         let bytes = kv.to_bytes().unwrap();
         let header = kv.encode_header();
         let total_size = header.len() + bytes.len();
@@ -55,7 +55,7 @@ impl DiskStorage {
         self.file.write(&bytes).unwrap();
 
         let key_entry = KeyEntry::init(timestamp, self.write_position, total_size);
-        self.key_dir.insert(key, key_entry);
+        self.key_dir.insert(key.to_string(), key_entry);
         self.write_position += total_size;
     }
 
@@ -73,10 +73,24 @@ impl DiskStorage {
                 file.read(&mut data_buf).unwrap();
 
                 let kv = KeyValue::from_bytes(&data_buf).unwrap();
+                
+                let mut bytes = vec![];
 
-                let value = kv.value;
+                let timestamp_bytes = kv.timestamp.to_be_bytes();
+                let key_bytes = kv.key.as_bytes();
+                let value_bytes = kv.value.as_bytes();
 
-                Some(value)
+                bytes.extend(&timestamp_bytes);
+                bytes.extend(key_bytes);
+                bytes.extend(value_bytes);
+                
+                let crc = crc::Crc::<u32>::new(&crc::CRC_32_ISO_HDLC).checksum(&bytes);
+
+                if crc == kv.crc {
+                    Some(kv.value)
+                } else {
+                    None
+                }
             }
             None => None,
         }
