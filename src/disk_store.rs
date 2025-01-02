@@ -1,6 +1,10 @@
-use std::{collections::HashMap, fs::{File, OpenOptions}, io::{Read, Seek, SeekFrom, Write}, path::Path, time::{SystemTime, UNIX_EPOCH}};
 use crate::format::{KeyEntry, KeyValue};
-
+use std::{
+    collections::HashMap,
+    fs::{File, OpenOptions},
+    io::{Read, Seek, SeekFrom, Write},
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 #[derive(Debug)]
 pub struct DiskStorage {
@@ -11,7 +15,7 @@ pub struct DiskStorage {
 }
 
 impl DiskStorage {
-    const HEADER_SIZE: usize = 24;
+    const HEADER_SIZE: usize = 28;
     pub fn new(file_name: Option<String>) -> Self {
         let file_name = file_name.unwrap_or("data.db".to_string());
         let write_position = 0;
@@ -23,35 +27,37 @@ impl DiskStorage {
                 .read(true)
                 .write(true)
                 .create(true)
+                .append(true)
                 .open(&file_name)
                 .unwrap(),
             write_position,
             key_dir,
         }
     }
-    pub fn init(&mut self) {
-        let file_name = self.file_name.clone();
 
-        if Path::new(&file_name).exists() {
+    fn is_open_file_empty(&self) -> bool {
+        self.file
+            .metadata()
+            .map(|metadata| metadata.len() == 0)
+            .unwrap_or(false)
+    }
+
+    pub fn init(&mut self) {
+        if !self.is_open_file_empty() {
             self.init_key_dir();
-        } else {
-            self.file = OpenOptions::new()
-                .read(true)
-                .write(true)
-                .create(true)
-                .open(&file_name)
-                .unwrap();
         }
     }
 
     pub fn set(&mut self, key: &str, value: &str) {
-        let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as usize;
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as usize;
         let kv = KeyValue::new(timestamp, key.to_string(), value.to_string());
         let bytes = kv.to_bytes().unwrap();
         let header = kv.encode_header();
         let total_size = header.len() + bytes.len();
 
-        self.file.write(&header).unwrap();
         self.file.write(&bytes).unwrap();
 
         let key_entry = KeyEntry::init(timestamp, self.write_position, total_size);
@@ -63,17 +69,18 @@ impl DiskStorage {
         match self.key_dir.get(key) {
             Some(key_entry) => {
                 let mut file = File::open(&self.file_name).unwrap();
-                file.seek(SeekFrom::Start(key_entry.position as u64)).unwrap();
+                file.seek(SeekFrom::Start(key_entry.position as u64))
+                    .unwrap();
 
-                let mut header_buf = [0u8; Self::HEADER_SIZE];
-                file.read(&mut header_buf).unwrap();
+                // let mut v = vec![0u8; 400];
+                // file.read(&mut v).unwrap();
+                // println!("v: {:?}", v);
 
                 let mut data_buf = vec![0u8; key_entry.total_size];
-
                 file.read(&mut data_buf).unwrap();
 
                 let kv = KeyValue::from_bytes(&data_buf).unwrap();
-                
+
                 let mut bytes = vec![];
 
                 let timestamp_bytes = kv.timestamp.to_be_bytes();
@@ -83,10 +90,10 @@ impl DiskStorage {
                 bytes.extend(&timestamp_bytes);
                 bytes.extend(key_bytes);
                 bytes.extend(value_bytes);
-                
-                let crc = crc::Crc::<u32>::new(&crc::CRC_32_ISO_HDLC).checksum(&bytes);
 
-                if crc == kv.crc {
+                let checksum = crc::Crc::<u32>::new(&crc::CRC_32_ISO_HDLC).checksum(&bytes);
+
+                if kv.crc == checksum {
                     Some(kv.value)
                 } else {
                     None
@@ -98,8 +105,8 @@ impl DiskStorage {
 
     fn init_key_dir(&mut self) {
         let mut file = File::open(&self.file_name).unwrap();
-        let position = 0;
-        
+
+        println!("****----------initialising the database----------****");
         loop {
             let mut header_buf = [0u8; Self::HEADER_SIZE];
             file.read(&mut header_buf).unwrap();
@@ -107,23 +114,23 @@ impl DiskStorage {
                 break;
             }
 
-            let (timestamp, key_size, value_size) = KeyValue::decode_header(&header_buf);
+            let (_, _, key_size, value_size) = KeyValue::decode_header(&header_buf);
 
-            let mut key_buf = vec![0u8; key_size];
-            file.read(&mut key_buf).unwrap();
-            let key = String::from_utf8(key_buf).unwrap();
+            let data_size = key_size + value_size;
+            let total_size = Self::HEADER_SIZE + data_size;
+            let mut data_buf = vec![0u8; data_size];
+            file.read(&mut data_buf).unwrap();
 
-            let mut value_buf = vec![0u8; value_size];
-            file.read(&mut value_buf).unwrap();
-            let value = String::from_utf8(value_buf).unwrap();
+            let full_data = [header_buf.to_vec(), data_buf].concat();
 
-            let total_size = Self::HEADER_SIZE + key_size + value_size;
+            let kv = KeyValue::from_bytes(&full_data).unwrap();
 
-            let key_entry = KeyEntry::init(timestamp, position, total_size);
-            self.key_dir.insert(key.clone(), key_entry);
-            self.write_position += total_size;  
-            println!("loaded key: {}, value: {}", key, value);
+            let key_entry = KeyEntry::init(kv.timestamp, self.write_position, total_size);
+            self.key_dir.insert(kv.key.clone(), key_entry);
+            self.write_position += total_size;
+            println!("loaded key: {}, value: {}", kv.key, kv.value);
         }
+        println!("****----------initialisation complete----------****")
     }
 }
 
