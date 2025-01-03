@@ -1,13 +1,15 @@
 #[derive(Debug)]
 pub struct KeyEntry {
+    pub file_id: u32,
     timestamp: usize,
     pub position: usize,
     pub total_size: usize,
 }
 
 impl KeyEntry {
-    pub fn init(timestamp: usize, position: usize, total_size: usize) -> Self {
+    pub fn init(file_id: u32, timestamp: usize, position: usize, total_size: usize) -> Self {
         KeyEntry {
+            file_id,
             timestamp,
             position,
             total_size,
