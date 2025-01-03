@@ -1,6 +1,7 @@
 use crate::format::{KeyEntry, KeyValue};
+use crate::rb_trees::RBTree;
 use std::{
-    collections::HashMap,
+    error::Error,
     fs::{self, File, OpenOptions},
     io::{Read, Seek, SeekFrom, Write},
     path::Path,
@@ -12,7 +13,7 @@ pub struct DiskStorage {
     file_id_counter: u32,
     file: File,
     write_position: usize,
-    key_dir: HashMap<String, KeyEntry>,
+    key_dir: RBTree<String, KeyEntry>,
     base_dir: String,
 }
 
@@ -28,7 +29,7 @@ impl DiskStorage {
 
         let file_path = Path::new(&base_dir).join("0.db");
         let write_position = 0;
-        let key_dir: HashMap<String, KeyEntry> = HashMap::new();
+        let key_dir = RBTree::new();
 
         DiskStorage {
             file_id_counter: 0,
@@ -52,10 +53,11 @@ impl DiskStorage {
             .unwrap_or(false)
     }
 
-    pub fn init(&mut self) {
+    pub fn init(&mut self) -> Result<(), Box<dyn Error>> {
         if !self.is_open_file_empty() {
-            self.init_key_dir();
+            self.init_key_dir()?;
         }
+        Ok(())
     }
 
     pub fn set(&mut self, key: &str, value: &str) {
@@ -85,7 +87,7 @@ impl DiskStorage {
                 .unwrap();
         }
 
-        self.file.write(&bytes).unwrap();
+        self.file.write(&bytes);
 
         let key_entry = KeyEntry::init(
             self.file_id_counter,
@@ -98,7 +100,7 @@ impl DiskStorage {
     }
 
     pub fn get(&self, key: &str) -> Option<String> {
-        match self.key_dir.get(key) {
+        match self.key_dir.find(&key.to_string()) {
             Some(key_entry) => {
                 let file_path = Path::new(&self.base_dir).join(format!("{}.db", key_entry.file_id));
                 let mut file = File::open(file_path).unwrap();
@@ -133,13 +135,15 @@ impl DiskStorage {
     }
 
     pub fn delete(&mut self, key: &str) {
+        self.key_dir.delete(&key.to_string());
         self.set(key, Self::TOMBSTONE);
     }
 
     pub fn merge(&mut self) {}
 
-    fn init_key_dir(&mut self) {
+    fn init_key_dir(&mut self) -> Result<(), Box<dyn Error>> {
         println!("****----------initialising the database----------****");
+
         let mut file_paths: Vec<String> = fs::read_dir(&self.base_dir)
             .unwrap()
             .filter_map(|entry| entry.ok())
@@ -152,32 +156,34 @@ impl DiskStorage {
         for file in file_paths {
             let file_path = Path::new(&file).file_name().unwrap().to_str().unwrap();
             self.write_position = 0;
-            self.file_id_counter = file_path.replace(".db", "").parse::<u32>().unwrap();
-            self.file = File::open(&file).unwrap();
-            self.load_file();
+            self.file_id_counter = file_path.replace(".db", "").parse::<u32>()?;
+            self.file = File::open(&file)?;
+            self.load_file()?;
         }
 
-        println!("****----------initialisation complete----------****")
+        println!("****----------initialisation complete----------****");
+
+        Ok(())
     }
 
-    fn load_file(&mut self) {
+    fn load_file(&mut self) -> Result<(), Box<dyn Error>> {
         loop {
             let mut header_buf = [0u8; Self::HEADER_SIZE];
-            self.file.read(&mut header_buf).unwrap();
+            self.file.read(&mut header_buf)?;
             if header_buf[0] == 0 {
                 break;
             }
 
-            let (_, _, key_size, value_size) = KeyValue::decode_header(&header_buf);
+            let (_, _, key_size, value_size) = KeyValue::decode_header(&header_buf)?;
 
             let data_size = key_size + value_size;
             let total_size = Self::HEADER_SIZE + data_size;
             let mut data_buf = vec![0u8; data_size];
-            self.file.read(&mut data_buf).unwrap();
+            self.file.read(&mut data_buf)?;
 
             let full_data = [header_buf.to_vec(), data_buf].concat();
 
-            let kv = KeyValue::from_bytes(&full_data).unwrap();
+            let kv = KeyValue::from_bytes(&full_data)?;
 
             let key_entry = KeyEntry::init(
                 self.file_id_counter,
@@ -189,6 +195,8 @@ impl DiskStorage {
             self.write_position += total_size;
             println!("loaded key: {}, value: {}", kv.key, kv.value);
         }
+
+        Ok(())
     }
 }
 
@@ -200,15 +208,4 @@ impl Write for DiskStorage {
     fn flush(&mut self) -> std::io::Result<()> {
         self.file.flush()
     }
-}
-
-fn list_files_in_directory(dir_path: &str) -> std::io::Result<Vec<String>> {
-    let mut file_paths = Vec::new();
-    for entry in fs::read_dir(dir_path)? {
-        let entry = entry?;
-        if entry.file_type()?.is_file() {
-            file_paths.push(entry.path().display().to_string());
-        }
-    }
-    Ok(file_paths)
 }

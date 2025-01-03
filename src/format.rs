@@ -1,3 +1,5 @@
+use std::{error::Error, fmt::Display};
+
 #[derive(Debug)]
 pub struct KeyEntry {
     pub file_id: u32,
@@ -5,6 +7,18 @@ pub struct KeyEntry {
     pub position: usize,
     pub total_size: usize,
 }
+
+impl Display for KeyEntry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "File ID: {}, Timestamp: {}, Position: {}, Total Size: {}",
+            self.file_id, self.timestamp, self.position, self.total_size
+        )
+    }
+}
+
+impl Error for KeyEntry {}
 
 impl KeyEntry {
     pub fn init(file_id: u32, timestamp: usize, position: usize, total_size: usize) -> Self {
@@ -17,6 +31,7 @@ impl KeyEntry {
     }
 }
 
+#[derive(Debug)]
 pub struct KeyValue {
     pub crc: u32,
     pub timestamp: usize,
@@ -46,7 +61,7 @@ impl KeyValue {
         }
     }
 
-    pub fn to_bytes(&self) -> Result<Vec<u8>, Box<bincode::ErrorKind>> {
+    pub fn to_bytes(&self) -> Result<Vec<u8>, Box<dyn Error>> {
         let mut bytes = vec![];
         bytes.extend(self.crc.to_be_bytes());
         bytes.extend(self.timestamp.to_be_bytes());
@@ -58,14 +73,14 @@ impl KeyValue {
         Ok(bytes)
     }
 
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self, Box<bincode::ErrorKind>> {
-        let crc = u32::from_be_bytes(bytes[0..4].try_into().unwrap());
-        let timestamp = usize::from_be_bytes(bytes[4..12].try_into().unwrap());
-        let key_size = usize::from_be_bytes(bytes[12..20].try_into().unwrap());
-        let value_size = usize::from_be_bytes(bytes[20..28].try_into().unwrap());
-        let key = String::from_utf8(bytes[28..28 + key_size].to_vec()).unwrap();
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, Box<dyn Error>> {
+        let crc = u32::from_be_bytes(bytes[0..4].try_into()?);
+        let timestamp = usize::from_be_bytes(bytes[4..12].try_into()?);
+        let key_size = usize::from_be_bytes(bytes[12..20].try_into()?);
+        let value_size = usize::from_be_bytes(bytes[20..28].try_into()?);
+        let key = String::from_utf8(bytes[28..28 + key_size].to_vec())?;
         let value =
-            String::from_utf8(bytes[28 + key_size..28 + key_size + value_size].to_vec()).unwrap();
+            String::from_utf8(bytes[28 + key_size..28 + key_size + value_size].to_vec())?;
 
         Ok(KeyValue {
             crc,
@@ -91,12 +106,20 @@ impl KeyValue {
         bytes
     }
 
-    pub fn decode_header(bytes: &[u8]) -> (u32, usize, usize, usize) {
-        let crc = u32::from_be_bytes(bytes[0..4].try_into().unwrap());
-        let timestamp = usize::from_be_bytes(bytes[4..12].try_into().unwrap());
-        let key_size = usize::from_be_bytes(bytes[12..20].try_into().unwrap());
-        let value_size = usize::from_be_bytes(bytes[20..28].try_into().unwrap());
+    pub fn decode_header(bytes: &[u8]) -> Result<(u32, usize, usize, usize), Box<dyn Error>> {
+        let crc = u32::from_be_bytes(bytes[0..4].try_into()?);
+        let timestamp = usize::from_be_bytes(bytes[4..12].try_into()?);
+        let key_size = usize::from_be_bytes(bytes[12..20].try_into()?);
+        let value_size = usize::from_be_bytes(bytes[20..28].try_into()?);
 
-        (crc, timestamp, key_size, value_size)
+        Ok((crc, timestamp, key_size, value_size))
     }
 }
+
+impl Display for KeyValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Key: {}, Value: {}", self.key, self.value)
+    }
+}
+
+impl Error for KeyValue {}

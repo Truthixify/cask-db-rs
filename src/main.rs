@@ -7,6 +7,7 @@ fn main() {
     // store.set("name", "jojo");
     // store.set("lol", "laugh");
     // store.set("marco", "palito");
+    // store.set("k", "jaegar");
     // store.delete("eren");
     // store.set("bastard", "boy");
     // store.set("calm", "omo");
