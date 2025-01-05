@@ -1,6 +1,6 @@
 use std::{error::Error, fmt::Display};
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct KeyEntry {
     pub file_id: u32,
     timestamp: usize,
@@ -79,8 +79,7 @@ impl KeyValue {
         let key_size = usize::from_be_bytes(bytes[12..20].try_into()?);
         let value_size = usize::from_be_bytes(bytes[20..28].try_into()?);
         let key = String::from_utf8(bytes[28..28 + key_size].to_vec())?;
-        let value =
-            String::from_utf8(bytes[28 + key_size..28 + key_size + value_size].to_vec())?;
+        let value = String::from_utf8(bytes[28 + key_size..28 + key_size + value_size].to_vec())?;
 
         Ok(KeyValue {
             crc,
