@@ -1,8 +1,8 @@
 use crate::format::{KeyEntry, KeyValue};
-use crate::rb_trees::{RBNode, RBTree};
+use crate::rb_trees::RBTree;
+use crate::Error;
 use std::{
     collections::VecDeque,
-    error::Error,
     fs::{self, File, OpenOptions},
     io::{Read, Seek, SeekFrom, Write},
     path::Path,
@@ -55,7 +55,7 @@ impl DiskStorage {
         Ok(entries.next().is_none())
     }
 
-    pub fn init(&mut self) -> Result<(), Box<dyn Error>> {
+    pub fn init(&mut self) -> Result<(), Error> {
         if !self.is_directory_empty()? {
             self.init_key_dir()?;
 
@@ -150,7 +150,7 @@ impl DiskStorage {
         self.tombstone.push_back(key.to_string());
     }
 
-    pub fn merge(&mut self) {
+    pub fn merge(&mut self) -> Result<(), Error> {
         let mut file_paths = self.files_in_dir();
         if let Some(active_file) = file_paths.pop() {
             let active_file_path = Path::new(&active_file);
@@ -175,30 +175,39 @@ impl DiskStorage {
                 file.seek(SeekFrom::Start(self.write_position as u64))
                     .unwrap();
                 let mut header_buf = [0u8; Self::HEADER_SIZE];
-                file.read(&mut header_buf).unwrap();
+                file.read(&mut header_buf)?;
 
                 if header_buf == [0u8; Self::HEADER_SIZE] {
                     break;
                 }
 
-                let (_, _, key_size, value_size) = KeyValue::decode_header(&header_buf).unwrap();
+                let (_, _, key_size, value_size) = KeyValue::decode_header(&header_buf)?;
 
                 let mut key_buf = vec![0u8; key_size];
-                file.read(&mut key_buf).unwrap();
-                let key = String::from_utf8(key_buf).unwrap();
+                file.read(&mut key_buf)?;
+                let key = String::from_utf8(key_buf)?;
 
                 let total_size = Self::HEADER_SIZE + key_size + value_size;
 
                 if self.tombstone.contains(&key) {
-                    file.seek(SeekFrom::Start(self.write_position as u64))
-                        .unwrap();
-                    let empty_buf = vec![0u8; total_size];
-                    file.write(&empty_buf).unwrap();
+                    file.seek(SeekFrom::Start(0))?;
+                    let mut content = vec![];
+                    let start = self.write_position;
+                    let end = self.write_position + total_size;
+                    file.read_to_end(&mut content)?;
+                    let before = &content[..start];
+                    let after = &content[end..];
+                    file.seek(SeekFrom::Start(0))?;
+                    file.write_all(&before)?;
+                    file.write_all(&after)?;
+
+                    file.set_len((before.len() + after.len()) as u64)?;
                 }
 
                 self.write_position += total_size;
             }
         }
+        Ok(())
     }
 
     fn files_in_dir(&mut self) -> Vec<String> {
@@ -214,7 +223,7 @@ impl DiskStorage {
         file_paths
     }
 
-    fn init_key_dir(&mut self) -> Result<(), Box<dyn Error>> {
+    fn init_key_dir(&mut self) -> Result<(), Error> {
         println!("****----------initialising the database----------****");
 
         let file_paths = self.files_in_dir();
@@ -231,7 +240,7 @@ impl DiskStorage {
         Ok(())
     }
 
-    fn load_file(&mut self, id: u32) -> Result<(), Box<dyn Error>> {
+    fn load_file(&mut self, id: u32) -> Result<(), Error> {
         loop {
             let mut header_buf = [0u8; Self::HEADER_SIZE];
             self.file.read(&mut header_buf)?;

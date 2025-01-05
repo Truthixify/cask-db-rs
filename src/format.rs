@@ -1,4 +1,5 @@
-use std::{error::Error, fmt::Display};
+use std::fmt::Display;
+use crate::Error;
 
 #[derive(Debug, Clone, Copy)]
 pub struct KeyEntry {
@@ -18,7 +19,7 @@ impl Display for KeyEntry {
     }
 }
 
-impl Error for KeyEntry {}
+impl std::error::Error for KeyEntry {}
 
 impl KeyEntry {
     pub fn init(file_id: u32, timestamp: usize, position: usize, total_size: usize) -> Self {
@@ -61,7 +62,7 @@ impl KeyValue {
         }
     }
 
-    pub fn to_bytes(&self) -> Result<Vec<u8>, Box<dyn Error>> {
+    pub fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut bytes = vec![];
         bytes.extend(self.crc.to_be_bytes());
         bytes.extend(self.timestamp.to_be_bytes());
@@ -73,7 +74,7 @@ impl KeyValue {
         Ok(bytes)
     }
 
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self, Box<dyn Error>> {
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
         let crc = u32::from_be_bytes(bytes[0..4].try_into()?);
         let timestamp = usize::from_be_bytes(bytes[4..12].try_into()?);
         let key_size = usize::from_be_bytes(bytes[12..20].try_into()?);
@@ -105,7 +106,7 @@ impl KeyValue {
         bytes
     }
 
-    pub fn decode_header(bytes: &[u8]) -> Result<(u32, usize, usize, usize), Box<dyn Error>> {
+    pub fn decode_header(bytes: &[u8]) -> Result<(u32, usize, usize, usize), Error> {
         let crc = u32::from_be_bytes(bytes[0..4].try_into()?);
         let timestamp = usize::from_be_bytes(bytes[4..12].try_into()?);
         let key_size = usize::from_be_bytes(bytes[12..20].try_into()?);
@@ -121,4 +122,4 @@ impl Display for KeyValue {
     }
 }
 
-impl Error for KeyValue {}
+impl std::error::Error for KeyValue {}

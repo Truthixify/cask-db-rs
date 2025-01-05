@@ -1,35 +1,14 @@
-use cask_db::disk_store::DiskStorage;
+use cask_db::{commands, Error};
+use clap::Parser;
+use cask_db::args;
 
-fn main() {
-    let mut store = DiskStorage::new(None);
-    store.init().unwrap();
-    // store.set("hello", "world");
-    // store.set("name", "jojo");
-    // store.set("lol", "laugh");
-    // store.set("marco", "palito");
-    // store.set("k", "jaegar");
-    // store.set("kub", "boy");
-    // store.set("kas", "omo");
-    // store.set("firi", "baby");
-    // store.set("hmm", "hmm");
-    // store.set("key", "value");
-
-    // store.set("mama", "awon boys");
-    // store.set("bombo", "bimbo");
-    // store.set("mum", "mums");
-    // store.set("mum", "mums");
-    // store.set("mum", "mums");
-    store.delete("lol");
-    // store.delete("marco");
-    store.merge();
-
-    println!(
-        "name: {} ",
-        if let Some(value) = store.get("name") {
-            value
-        } else {
-            "not found".to_string()
-        }
-    );
-    println!("store: {:?}", store);
+fn main() -> Result<(), Error> {
+    match args::Cli::parse().command {
+        args::Commands::Create(create_args) => commands::create(create_args),
+        args::Commands::Init(init_args) => commands::init(init_args),
+        args::Commands::Get(get_args) => commands::get(get_args),
+        args::Commands::Set(set_args) => commands::set(set_args),
+        args::Commands::Delete(delete_args) => commands::delete(delete_args),
+        args::Commands::Merge(merge_args) => commands::merge(merge_args),
+    }
 }
