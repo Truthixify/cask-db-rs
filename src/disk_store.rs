@@ -152,6 +152,11 @@ impl DiskStorage {
 
     pub fn merge(&mut self) -> Result<(), Error> {
         let mut file_paths = self.files_in_dir();
+        assert!(
+            file_paths.len() > 1,
+            "you can't merge on active file alone."
+        );
+
         if let Some(active_file) = file_paths.pop() {
             let active_file_path = Path::new(&active_file);
             self.file = OpenOptions::new()
@@ -162,51 +167,56 @@ impl DiskStorage {
                 .unwrap();
         }
 
-        for path in file_paths {
-            let file_path = Path::new(&path);
-            let mut file = OpenOptions::new()
-                .read(true)
+        for path in &file_paths {
+            let file_path = Path::new(path);
+            let mut file = OpenOptions::new().read(true).open(&file_path)?;
+
+            // Open a temporary file for merged output
+            let temp_file_path = file_path.with_extension("tmp");
+            let mut temp_file = OpenOptions::new()
+                .create(true)
                 .write(true)
-                .open(&file_path)
-                .unwrap();
-            self.write_position = 0;
+                .truncate(true)
+                .open(&temp_file_path)?;
+
+            let mut position = 0;
 
             loop {
-                file.seek(SeekFrom::Start(self.write_position as u64))
-                    .unwrap();
+                file.seek(SeekFrom::Start(position as u64))?;
                 let mut header_buf = [0u8; Self::HEADER_SIZE];
-                file.read(&mut header_buf)?;
-
-                if header_buf == [0u8; Self::HEADER_SIZE] {
-                    break;
+                if file.read(&mut header_buf)? == 0 {
+                    break; // End of file
                 }
 
                 let (_, _, key_size, value_size) = KeyValue::decode_header(&header_buf)?;
 
                 let mut key_buf = vec![0u8; key_size];
-                file.read(&mut key_buf)?;
+                file.read_exact(&mut key_buf)?;
                 let key = String::from_utf8(key_buf)?;
+
+                let mut value_buf = vec![0u8; value_size];
+                file.read_exact(&mut value_buf)?;
 
                 let total_size = Self::HEADER_SIZE + key_size + value_size;
 
                 if self.tombstone.contains(&key) {
-                    file.seek(SeekFrom::Start(0))?;
-                    let mut content = vec![];
-                    let start = self.write_position;
-                    let end = self.write_position + total_size;
-                    file.read_to_end(&mut content)?;
-                    let before = &content[..start];
-                    let after = &content[end..];
-                    file.seek(SeekFrom::Start(0))?;
-                    file.write_all(&before)?;
-                    file.write_all(&after)?;
-
-                    file.set_len((before.len() + after.len()) as u64)?;
+                    // Skip this key-value pair if it's in the tombstone
+                    position += total_size;
+                    continue;
                 }
 
-                self.write_position += total_size;
+                // Write valid key-value pair to the temporary file
+                temp_file.write_all(&header_buf)?;
+                temp_file.write_all(key.as_bytes())?;
+                temp_file.write_all(&value_buf)?;
+
+                position += total_size;
             }
+
+            // Finalize: replace the active file with the temporary file
+            std::fs::rename(temp_file_path, file_path)?;
         }
+
         Ok(())
     }
 

@@ -1,5 +1,5 @@
-use std::fmt::Display;
 use crate::Error;
+use std::fmt::Display;
 
 #[derive(Debug, Clone, Copy)]
 pub struct KeyEntry {

@@ -17,7 +17,9 @@ pub fn init(args: InitArgs) -> Result<(), Error> {
 pub fn get(args: GetArgs) -> Result<(), Error> {
     let mut store = DiskStorage::new(args.base_dir);
     store.init()?;
-    store.get(&args.key);
+    if let Some(value) = store.get(&args.key) {
+        println!("key: {}, value: {}", args.key, value);
+    }
 
     Ok(())
 }
@@ -34,6 +36,7 @@ pub fn delete(args: DeleteArgs) -> Result<(), Error> {
     let mut store = DiskStorage::new(args.base_dir);
     store.init()?;
     store.delete(&args.key);
+    store.merge()?;
 
     Ok(())
 }

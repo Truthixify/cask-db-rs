@@ -1,6 +1,6 @@
+use cask_db::args;
 use cask_db::{commands, Error};
 use clap::Parser;
-use cask_db::args;
 
 fn main() -> Result<(), Error> {
     match args::Cli::parse().command {

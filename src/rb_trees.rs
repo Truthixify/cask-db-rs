@@ -97,6 +97,8 @@ impl<K: Ord, V> RBTree<K, V> {
         unsafe {
             let mut parent = null_mut();
             let mut node = self.root;
+
+            // Find the node to delete
             while !node.is_null() {
                 node = match (*node).key.cmp(key) {
                     Ordering::Less => {
@@ -112,113 +114,54 @@ impl<K: Ord, V> RBTree<K, V> {
             }
 
             if node.is_null() {
+                return; // Key not found
+            }
+
+            let cl = (*node).left;
+            let cr = (*node).right;
+
+            // Special case: deleting the root and the only node
+            if node == self.root && cl.is_null() && cr.is_null() {
+                self.root = null_mut();
+                drop(Box::from_raw(node));
                 return;
             }
 
-            /* cl and cr denote left and right child of node, respectively. */
-            let cl = (*node).left;
-            let cr = (*node).right;
-            let mut deleted_color;
+            let deleted_color;
 
             if cl.is_null() {
                 replace_node(self, parent, node, cr);
-                if cr.is_null() {
-                    /*
-                     * Case 1 - cl and cr are both NULL
-                     * (n could be either color here)
-                     *
-                     *     (n)             NULL
-                     *    /   \    -->
-                     *  NULL  NULL
-                     */
-
-                    deleted_color = (*node).color;
-                } else {
-                    /*
-                     * Case 2 - cl is NULL and cr is not NULL
-                     *
-                     *     N             Cr
-                     *    / \    -->    /  \
-                     *  NULL cr       NULL NULL
-                     */
-
-                    (*cr).parent = parent;
-                    (*cr).color = Color::Black;
-                    deleted_color = Color::Red;
-                }
+                deleted_color = (*node).color;
             } else if cr.is_null() {
-                /*
-                 * Case 3 - cl is not NULL and cr is NULL
-                 *
-                 *     N             Cl
-                 *    / \    -->    /  \
-                 *  cl  NULL      NULL NULL
-                 */
-
                 replace_node(self, parent, node, cl);
-                (*cl).parent = parent;
-                (*cl).color = Color::Black;
-                deleted_color = Color::Red;
+                deleted_color = (*node).color;
             } else {
                 let mut victim = (*node).right;
                 while !(*victim).left.is_null() {
                     victim = (*victim).left;
                 }
-                if victim == (*node).right {
-                    /* Case 4 - victim is the right child of node
-                     *
-                     *     N         N         n
-                     *    / \       / \       / \
-                     *  (cl) cr   (cl) Cr    Cl  Cr
-                     *
-                     *     N         n
-                     *    / \       / \
-                     *  (cl) Cr    Cl  Cr
-                     *         \         \
-                     *         crr       crr
-                     */
 
-                    replace_node(self, parent, node, victim);
-                    (*victim).parent = parent;
-                    deleted_color = (*victim).color;
-                    (*victim).color = (*node).color;
-                    (*victim).left = cl;
-                    (*cl).parent = victim;
-                    if (*victim).right.is_null() {
-                        parent = victim;
-                    } else {
-                        deleted_color = Color::Red;
-                        (*(*victim).right).color = Color::Black;
-                    }
-                } else {
-                    /*
-                     * Case 5 - victim is not the right child of node
-                     */
+                let vp = (*victim).parent;
+                let vr = (*victim).right;
 
-                    /* vp and vr denote parent and right child of victim, respectively. */
-                    let vp = (*victim).parent;
-                    let vr = (*victim).right;
+                if victim != (*node).right {
                     (*vp).left = vr;
-                    if vr.is_null() {
-                        deleted_color = (*victim).color;
-                    } else {
-                        deleted_color = Color::Red;
+                    if !vr.is_null() {
                         (*vr).parent = vp;
-                        (*vr).color = Color::Black;
                     }
-                    replace_node(self, parent, node, victim);
-                    (*victim).parent = parent;
-                    (*victim).color = (*node).color;
-                    (*victim).left = cl;
-                    (*victim).right = cr;
-                    (*cl).parent = victim;
-                    (*cr).parent = victim;
-                    parent = vp;
+                    (*victim).right = (*node).right;
+                    (*(*victim).right).parent = victim;
                 }
+
+                replace_node(self, parent, node, victim);
+                (*victim).left = cl;
+                (*cl).parent = victim;
+                deleted_color = (*victim).color;
+                (*victim).color = (*node).color;
             }
 
-            /* release resource */
             drop(Box::from_raw(node));
+
             if matches!(deleted_color, Color::Black) {
                 delete_fixup(self, parent);
             }
